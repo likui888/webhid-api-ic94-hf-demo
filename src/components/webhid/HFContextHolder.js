@@ -43,7 +43,7 @@ export const HFContextHolder = {
     validateEnv() {
         return new Promise((resolve, reject) => {
             // 检查是否已经创建
-            if (store.getters.HFContextHolder) {
+            if (store.getters.holder) {
                 return reject('初始化失败，对象已存在....');
             }
             // 检查浏览器是否支持
@@ -55,6 +55,7 @@ export const HFContextHolder = {
     },
 
     /**
+     * 注意：此处的连接断开事件只针对 已经连接过的设备有效，未连接过的设备或被抹除连接记录的设备无效
      * 注册 hid 设备 连接/断开 事件
      * 1.connect 开始检测是否插入了之前使用的串口 并做自动连接处理
      * 2.disconnect 检测是否拔掉了正在使用的串口 并作停止处理
@@ -63,9 +64,15 @@ export const HFContextHolder = {
         await this.logPrint('[info] 注册设备连接/断开事件...')
         navigator.hid.addEventListener('connect', event => {
             this.logPrint("[registerHidDeviceEvent]  设备已连接  ", JSON.stringify(event?.device))
+            if (!store.getters.holder?.opend){
+                clearInterval(this.autoSearchDeviceTimer)
+                this.doConnectHidDevice(event?.device)
+            }
         });
         navigator.hid.addEventListener('disconnect', event => {
             this.logPrint("[registerHidDeviceEvent]  设备已断开  ", JSON.stringify(event?.device))
+            // 连接实例将自动销毁
+            store.dispatch('HFStore/set_holder', null)
         });
     },
     /**
@@ -206,14 +213,14 @@ export const HFContextHolder = {
     async startPreConnect(options) {
         switch (options?.connectType) {
             case 'auto':
-                this.startAutoGetDevice(options?.searchCycleTime || 2000)
+                this.startAutoGetDevice(options?.searchCycleTime || 1000)
                 break;
             case 'manual':
                 //  don`t need do anything， user need call 【startManualGetDevice】 in page dom
                 break;
             // .... other type
             default:
-                await this.startAutoGetDevice(options?.searchCycleTime || 2000)
+                await this.startAutoGetDevice(options?.searchCycleTime || 1000)
         }
     },
     /**
@@ -224,10 +231,10 @@ export const HFContextHolder = {
             this.logPrint('[info] 断开连接')
             try {
                 store.getters.holder.close()
+                store.dispatch('HFStore/set_holder', null)
             } catch (e) {
                 alert(e)
             }
-            this.logPrint('[info] 断开连接')
             return
         }
         this.logPrint('[info] 销毁失败，实例不存在')
